@@ -4,7 +4,6 @@ var module_path    = require("path");
 var module_uglify  = require("uglifyjs");
 var module_miniCSS = require("mini-css");
 
-
 /*
  * include files
 */
@@ -17,8 +16,13 @@ var includeFiles = function(sourceCode,basePath,callback){
             return callback(sourceCode);
         }
         var filePaths = sourceCode.substring(beginPos + $includeBegin.length, endPos).trim().split("\n").each(function(i,fileName){
-            if(!isEmpty(fileName)){
-                return Std.url.convert(basePath || "",fileName).trim();
+            if(!isEmpty(fileName = fileName.trim())){
+                if(!isEmpty(basePath)){
+                    basePath += "/";
+                }else{
+                    basePath = "";
+                }
+                return module_path.normalize(basePath + fileName);
             }
         },true);
 
@@ -120,7 +124,7 @@ var StdJSBuilder = Std.module({
          * minifyJS
         */
         minifyJS:function(sourceCode){
-            return module_uglify.minify(sourceCode,{
+            return module_uglify.minify(replaceKeyword(sourceCode),{
                 fromString: true
             }).code
         },
@@ -129,6 +133,28 @@ var StdJSBuilder = Std.module({
         */
         minifyCSS:function(sourceCode){
             return module_miniCSS(sourceCode);
+        },
+        /*
+         * read file
+        */
+        readFile:function(filePath,callback){
+            return module_fs.readFile(filePath,function(error,data){
+                if(isFunction(callback)){
+                    callback.call(this,error,String(data));
+                }
+            });
+        },
+        /*
+         * write file
+        */
+        writeFile:function(filePath,data,callback){
+            return module_fs.writeFile(filePath,data,callback);
+        },
+        /*
+         * clearDebugCode
+        */
+        clearDebugCode:function(text){
+            return clearDebugCode(text);
         },
         /*
          * merge files
@@ -153,7 +179,7 @@ var StdJSBuilder = Std.module({
 
             Std.each(inputFiles,function(i,filePath){
                 queue.push(function(){
-                    module_fs.readFile(filePath,function(error,data){
+                    StdJSBuilder.readFile(filePath,function(error,data){
                         if(!error){
                             text += data;
                         }
@@ -175,8 +201,11 @@ var StdJSBuilder = Std.module({
         /*
          * rebuild
         */
-        rebuild:function(sourceCode,basePath,callback){
-            includeFiles(String(clearDebugCode(sourceCode)),basePath,function(text){
+        rebuild:function(sourceCode,debugMode,basePath,callback){
+            includeFiles(sourceCode,basePath,function(text){
+                if(debugMode !== true){
+                    text = clearDebugCode(text);
+                }
                 if(isFunction(callback)){
                     callback(text);
                 }
@@ -185,11 +214,10 @@ var StdJSBuilder = Std.module({
         /*
          * build JS code
         */
-        buildJSCode:function(sourceCode,minify,basePath,callback){
-            var headerNote = StdJSBuilder.headNoteText(sourceCode = String(sourceCode));
+        buildJSCode:function(sourceCode,minify,debugMode,basePath,callback){
+            var headerNote = StdJSBuilder.headNoteText(sourceCode);
 
-            StdJSBuilder.rebuild(sourceCode,basePath,function(text){
-                text = replaceKeyword(text);
+            StdJSBuilder.rebuild(sourceCode,debugMode,basePath,function(text){
                 if(minify === true){
                     text = headerNote + "\r\n" + StdJSBuilder.minifyJS(text)
                 }
@@ -201,10 +229,10 @@ var StdJSBuilder = Std.module({
         /*
          * build CSS code
         */
-        buildCSSCode:function(sourceCode,minify,basePath,callback){
-            var headerNote = StdJSBuilder.headNoteText(sourceCode = String(sourceCode));
+        buildCSSCode:function(sourceCode,minify,debugMode,basePath,callback){
+            var headerNote = StdJSBuilder.headNoteText(sourceCode);
 
-            StdJSBuilder.rebuild(sourceCode,basePath,function(text){
+            StdJSBuilder.rebuild(sourceCode,debugMode,basePath,function(text){
                 if(minify === true){
                     text = headerNote + "\r\n" + StdJSBuilder.minifyCSS(text)
                 }
@@ -216,9 +244,9 @@ var StdJSBuilder = Std.module({
         /*
          * build JS file
         */
-        buildJSFile:function(inputPath,outputPath,minify,callback){
-            module_fs.readFile(inputPath,function(error,sourceCode){
-                !error && StdJSBuilder.buildJSCode(sourceCode,minify,module_path.dirname(inputPath),function(code){
+        buildJSFile:function(inputPath,outputPath,minify,debugMode,callback){
+            StdJSBuilder.readFile(inputPath,function(error,sourceCode){
+                !error && StdJSBuilder.buildJSCode(sourceCode,minify,debugMode,module_path.dirname(inputPath),function(code){
                     module_fs.writeFile(outputPath,code,function(error,code){
                         if(!error && isFunction(callback)){
                             callback(code);
@@ -230,9 +258,9 @@ var StdJSBuilder = Std.module({
         /*
          * build CSS file
         */
-        buildCSSFile:function(inputPath,outputPath,minify,callback){
-            module_fs.readFile(inputPath,function(error,sourceCode){
-                !error && StdJSBuilder.buildCSSCode(sourceCode,minify,module_path.dirname(inputPath),function(code){
+        buildCSSFile:function(inputPath,outputPath,minify,debugMode,callback){
+            StdJSBuilder.readFile(inputPath,function(error,sourceCode){
+                !error && StdJSBuilder.buildCSSCode(sourceCode,minify,debugMode,module_path.dirname(inputPath),function(code){
                     module_fs.writeFile(outputPath,code,function(error,code){
                         if(!error && isFunction(callback)){
                             callback(code);
@@ -251,4 +279,3 @@ var StdJSBuilder = Std.module({
  * exports
 */
 module.exports = StdJSBuilder;
-

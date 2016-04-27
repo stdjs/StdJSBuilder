@@ -1,11 +1,12 @@
 {
   "name": "StdJSBuilder",
-  "version": "0.1.0",
+  "version": "0.1.6",
   "description": "StdJS Builder",
   "main": "index.js",
   "dependencies": {
     "stdjs_node": "^0.3.0",
-    "uglifyjs": "^2.4.10"
+    "uglifyjs": "^2.4.10",
+	"mini-css": "^1.0.3"
   },
   "devDependencies": {},
   "scripts": {
