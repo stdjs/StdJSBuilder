@@ -123,16 +123,28 @@ var StdJSBuilder = Std.module({
         /*
          * minifyJS
         */
-        minifyJS:function(sourceCode){
-            return module_uglify.minify(replaceKeyword(sourceCode),{
+        minifyJS:function(sourceCode,keepHeadNote){
+            var headerNote = StdJSBuilder.headNoteText(sourceCode);
+
+            sourceCode = module_uglify.minify(replaceKeyword(sourceCode),{
                 fromString: true
-            }).code
+            }).code;
+            if(keepHeadNote !== false){
+                sourceCode = headerNote + "\r\n" + sourceCode;
+            }
+            return sourceCode;
         },
         /*
          * minifyCSS
         */
-        minifyCSS:function(sourceCode){
-            return module_miniCSS(sourceCode);
+        minifyCSS:function(sourceCode,keepHeadNote){
+            var headerNote = StdJSBuilder.headNoteText(sourceCode);
+            sourceCode = module_miniCSS(sourceCode);
+
+            if(keepHeadNote !== false){
+                sourceCode = headerNote + "\r\n" + sourceCode;
+            }
+            return sourceCode;
         },
         /*
          * read file
@@ -149,6 +161,71 @@ var StdJSBuilder = Std.module({
         */
         writeFile:function(filePath,data,callback){
             return module_fs.writeFile(filePath,data,callback);
+        },
+        /*
+         * remove
+        */
+        remove:function(filePath,callback){
+            var queue = new Std.queue({
+                on:{
+                    complete:callback
+                }
+            });
+            if(module_fs.existsSync(filePath)){
+                if(module_fs.statSync(filePath).isDirectory()){
+                    Std.each(filePath.readdirSync(filePath),function(i,fileName){
+                        queue.push(function(){
+                            StdJSBuilder.remove(filePath + "/" + fileName,function(){
+                                module_fs.rmdirSync(filePath + "/" + fileName);
+                                queue.next();
+                            });
+                        });
+                    });
+                }else{
+                    filePath.unlinkSync(filePath);
+                }
+            }
+            queue.start();
+        },
+        /*
+         * copy
+        */
+        copy:function(inputPath,outputPath,callback){
+            var queue = new Std.queue({
+                on:{
+                    complete:callback
+                }
+            });
+            if(module_fs.existsSync(outputPath)){
+                StdJSBuilder.remove(outputPath);
+            }
+            if(module_fs.existsSync(inputPath)){
+                if(module_fs.statSync(inputPath).isDirectory()){
+                    Std.each(module_fs.readdirSync(inputPath),function(i,fileName){
+                        var fromPath = inputPath  + module_path.sep + fileName;
+                        var toPath   = outputPath + module_path.sep + fileName;
+                        var stat     = module_fs.statSync(fromPath);
+
+                        if(stat.isDirectory()){
+                            queue.push(function(){
+                                StdJSBuilder.copy(fromPath,toPath,function(){
+                                    queue.next();
+                                });
+                            });
+                        }else if(stat.isFile()){
+                            StdJSBuilder.copy(fromPath,toPath,function(){
+                                queue.next();
+                            });
+                        }
+                    });
+                }else{
+                    var readStream = module_fs.createReadStream(inputPath);
+                    readStream.pipe(module_fs.createWriteStream(outputPath));
+                    readStream.on("close",callback);
+                }
+            }
+
+            queue.start();
         },
         /*
          * clearDebugCode
@@ -202,7 +279,7 @@ var StdJSBuilder = Std.module({
          * rebuild
         */
         rebuild:function(sourceCode,debugMode,basePath,callback){
-            includeFiles(sourceCode,basePath,function(text){
+            includeFiles(sourceCode.trim(),basePath,function(text){
                 if(debugMode !== true){
                     text = clearDebugCode(text);
                 }
@@ -215,11 +292,9 @@ var StdJSBuilder = Std.module({
          * build JS code
         */
         buildJSCode:function(sourceCode,minify,debugMode,basePath,callback){
-            var headerNote = StdJSBuilder.headNoteText(sourceCode);
-
             StdJSBuilder.rebuild(sourceCode,debugMode,basePath,function(text){
                 if(minify === true){
-                    text = headerNote + "\r\n" + StdJSBuilder.minifyJS(text)
+                    text = StdJSBuilder.minifyJS(text)
                 }
                 if(isFunction(callback)){
                     callback(text);
@@ -230,11 +305,9 @@ var StdJSBuilder = Std.module({
          * build CSS code
         */
         buildCSSCode:function(sourceCode,minify,debugMode,basePath,callback){
-            var headerNote = StdJSBuilder.headNoteText(sourceCode);
-
             StdJSBuilder.rebuild(sourceCode,debugMode,basePath,function(text){
                 if(minify === true){
-                    text = headerNote + "\r\n" + StdJSBuilder.minifyCSS(text)
+                    text = StdJSBuilder.minifyCSS(text)
                 }
                 if(isFunction(callback)){
                     callback(text);
