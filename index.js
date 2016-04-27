@@ -6,7 +6,7 @@ var module_miniCSS = require("mini-css");
 
 /*
  * include files
-*/
+ */
 var includeFiles = function(sourceCode,basePath,callback){
     var $includeBegin = "/*[#include begin]";
     var $includeEnd   = "[#include end]*/";
@@ -50,7 +50,7 @@ var includeFiles = function(sourceCode,basePath,callback){
 
 /*
  * clear debug code
-*/
+ */
 var clearDebugCode = function(sourceCode){
     var beginStr    = "/*[#debug begin]*/";
     var endStr      = "/*[#debug end]*/";
@@ -76,7 +76,7 @@ var clearDebugCode = function(sourceCode){
 
 /*
  * replace keyword
-*/
+ */
 var replaceKeyword = function(sourceCode){
     var keywords = {
         "model":"a",
@@ -113,22 +113,25 @@ var replaceKeyword = function(sourceCode){
     return sourceCode;
 };
 
-
 /*
  * module
-*/
+ */
 var StdJSBuilder = Std.module({
     /*[#module option:static]*/
     static:{
         /*
          * minifyJS
-        */
+         */
         minifyJS:function(sourceCode,keepHeadNote){
+            if(isEmpty(sourceCode)){
+                return sourceCode;
+            }
             var headerNote = StdJSBuilder.headNoteText(sourceCode);
 
             sourceCode = module_uglify.minify(replaceKeyword(sourceCode),{
                 fromString: true
             }).code;
+
             if(keepHeadNote !== false){
                 sourceCode = headerNote + "\r\n" + sourceCode;
             }
@@ -136,8 +139,11 @@ var StdJSBuilder = Std.module({
         },
         /*
          * minifyCSS
-        */
+         */
         minifyCSS:function(sourceCode,keepHeadNote){
+            if(isEmpty(sourceCode)){
+                return sourceCode;
+            }
             var headerNote = StdJSBuilder.headNoteText(sourceCode);
             sourceCode = module_miniCSS(sourceCode);
 
@@ -148,7 +154,7 @@ var StdJSBuilder = Std.module({
         },
         /*
          * read file
-        */
+         */
         readFile:function(filePath,callback){
             return module_fs.readFile(filePath,function(error,data){
                 if(isFunction(callback)){
@@ -158,13 +164,13 @@ var StdJSBuilder = Std.module({
         },
         /*
          * write file
-        */
+         */
         writeFile:function(filePath,data,callback){
             return module_fs.writeFile(filePath,data,callback);
         },
         /*
          * remove
-        */
+         */
         remove:function(filePath,callback){
             var queue = new Std.queue({
                 on:{
@@ -173,34 +179,39 @@ var StdJSBuilder = Std.module({
             });
             if(module_fs.existsSync(filePath)){
                 if(module_fs.statSync(filePath).isDirectory()){
-                    Std.each(filePath.readdirSync(filePath),function(i,fileName){
+                    queue.on("complete",function(){
+                        module_fs.rmdirSync(filePath);
+                    },0);
+
+                    Std.each(module_fs.readdirSync(filePath),function(i,fileName){
                         queue.push(function(){
-                            StdJSBuilder.remove(filePath + "/" + fileName,function(){
-                                module_fs.rmdirSync(filePath + "/" + fileName);
+                            StdJSBuilder.remove(filePath + module_path.sep + fileName,function(){
                                 queue.next();
                             });
                         });
                     });
                 }else{
-                    filePath.unlinkSync(filePath);
+                    module_fs.unlinkSync(filePath);
                 }
             }
             queue.start();
         },
         /*
          * copy
-        */
+         */
         copy:function(inputPath,outputPath,callback){
             var queue = new Std.queue({
                 on:{
                     complete:callback
                 }
             });
-            if(module_fs.existsSync(outputPath)){
-                StdJSBuilder.remove(outputPath);
-            }
-            if(module_fs.existsSync(inputPath)){
+            var copyTask = function(){
+                if(!module_fs.existsSync(inputPath)){
+                    return;
+                }
                 if(module_fs.statSync(inputPath).isDirectory()){
+                    module_fs.mkdirSync(outputPath);
+
                     Std.each(module_fs.readdirSync(inputPath),function(i,fileName){
                         var fromPath = inputPath  + module_path.sep + fileName;
                         var toPath   = outputPath + module_path.sep + fileName;
@@ -223,19 +234,26 @@ var StdJSBuilder = Std.module({
                     readStream.pipe(module_fs.createWriteStream(outputPath));
                     readStream.on("close",callback);
                 }
+            };
+            if(module_fs.existsSync(outputPath)){
+                StdJSBuilder.remove(outputPath,function(){
+                    copyTask();
+                    queue.start();
+                });
+            }else{
+                copyTask();
+                queue.start();
             }
-
-            queue.start();
         },
         /*
          * clearDebugCode
-        */
+         */
         clearDebugCode:function(text){
             return clearDebugCode(text);
         },
         /*
          * merge files
-        */
+         */
         mergeFiles:function(inputFiles,outputFile,callback){
             var text  = "";
             var queue = new Std.queue({
@@ -257,7 +275,7 @@ var StdJSBuilder = Std.module({
             Std.each(inputFiles,function(i,filePath){
                 queue.push(function(){
                     StdJSBuilder.readFile(filePath,function(error,data){
-                        if(!error){
+                        if(!error && isString(data)){
                             text += data;
                         }
                         queue.next();
@@ -268,7 +286,7 @@ var StdJSBuilder = Std.module({
         },
         /*
          * head note text
-        */
+         */
         headNoteText:function(sourceCode){
             if(sourceCode.left(2) === "/*"){
                 return sourceCode.substring(0,sourceCode.indexOf("*/") + 2)
@@ -277,7 +295,7 @@ var StdJSBuilder = Std.module({
         },
         /*
          * rebuild
-        */
+         */
         rebuild:function(sourceCode,debugMode,basePath,callback){
             includeFiles(sourceCode.trim(),basePath,function(text){
                 if(debugMode !== true){
@@ -290,7 +308,7 @@ var StdJSBuilder = Std.module({
         },
         /*
          * build JS code
-        */
+         */
         buildJSCode:function(sourceCode,minify,debugMode,basePath,callback){
             StdJSBuilder.rebuild(sourceCode,debugMode,basePath,function(text){
                 if(minify === true){
@@ -303,7 +321,7 @@ var StdJSBuilder = Std.module({
         },
         /*
          * build CSS code
-        */
+         */
         buildCSSCode:function(sourceCode,minify,debugMode,basePath,callback){
             StdJSBuilder.rebuild(sourceCode,debugMode,basePath,function(text){
                 if(minify === true){
@@ -316,7 +334,7 @@ var StdJSBuilder = Std.module({
         },
         /*
          * build JS file
-        */
+         */
         buildJSFile:function(inputPath,outputPath,minify,debugMode,callback){
             StdJSBuilder.readFile(inputPath,function(error,sourceCode){
                 !error && StdJSBuilder.buildJSCode(sourceCode,minify,debugMode,module_path.dirname(inputPath),function(code){
@@ -330,7 +348,7 @@ var StdJSBuilder = Std.module({
         },
         /*
          * build CSS file
-        */
+         */
         buildCSSFile:function(inputPath,outputPath,minify,debugMode,callback){
             StdJSBuilder.readFile(inputPath,function(error,sourceCode){
                 !error && StdJSBuilder.buildCSSCode(sourceCode,minify,debugMode,module_path.dirname(inputPath),function(code){
@@ -350,5 +368,5 @@ var StdJSBuilder = Std.module({
 
 /*
  * exports
-*/
+ */
 module.exports = StdJSBuilder;
